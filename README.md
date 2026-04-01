@@ -1,6 +1,6 @@
 # Breast Cancer Image Classification Based on Deep Transfer Learning
 
-> A full-stack web application that classifies breast histopathology image patches as **Benign (IDC−)** or **Malignant (IDC+)** using EfficientNet deep transfer learning, Grad-CAM visual explainability, and LLM-assisted hospital recommendations.
+> A full-stack web application that classifies breast histopathology image patches as **Benign (IDC−)** or **Malignant (IDC+)** using **DenseNet121** deep transfer learning, Grad-CAM visual explainability, and LLM-assisted hospital recommendations.
 
 ---
 
@@ -79,54 +79,63 @@ The training script automatically downloads this dataset from Kaggle on first ru
 
 ## 3. Model Architecture
 
-The model uses **EfficientNet** as the backbone via **transfer learning** from ImageNet pre-trained weights.
+The system employs **DenseNet121** as the feature extraction backbone, initialised with ImageNet pre-trained weights and fine-tuned under a three-phase progressive-unfreezing transfer-learning strategy.
 
-### Base Model: EfficientNet (B0 / B3 / B7)
+### Base Model: DenseNet121
 
-EfficientNet is a family of convolutional neural networks that uniformly scales depth, width, and resolution using a compound scaling method. The project supports three variants:
+DenseNet121 (Densely Connected Convolutional Network, 121 layers) [Huang et al., CVPR 2017] is characterised by **dense connectivity**: each layer within a dense block receives, as additional input, the concatenated feature maps of *all* preceding layers within that block:
 
-| Variant | Parameters | Top-1 ImageNet Acc | Use Case |
-|---|---|---|---|
-| **EfficientNetB0** | ~5.3M | 77.1% | Fast training, lower memory |
-| **EfficientNetB3** | ~12M | 81.6% | Balanced speed/accuracy |
-| **EfficientNetB7** | ~66M | 84.3% | Highest accuracy, more compute |
+$$x_\ell = H_\ell([x_0, x_1, \ldots, x_{\ell-1}])$$
+
+where $H_\ell$ denotes a composite function of Batch Normalisation → ReLU → Convolution, and $[\cdot]$ denotes channel-wise concatenation. This connectivity pattern alleviates the vanishing-gradient problem, promotes feature reuse, and yields competitive accuracy with substantially fewer parameters than comparably deep architectures.
+
+| Property | Value |
+|---|---|
+| **Total depth** | 121 layers |
+| **Dense Blocks** | 4 (with 6, 12, 24, 16 bottleneck units respectively) |
+| **Growth rate** | k = 32 filters per layer |
+| **Initial convolution** | 7×7, stride 2, 64 output channels |
+| **Transition layers** | 3 (BN → ReLU → Conv 1×1 → AvgPool 2×2, θ = 0.5 compression) |
+| **Backbone output shape** | 7×7×1024 (for 224×224 input) |
+| **ImageNet top-1 accuracy** | 74.97% |
+| **Backbone parameters** | ~6.96M |
 
 ### Custom Classification Head
 
-On top of the frozen/unfrozen EfficientNet backbone, a custom classification head is added:
+The DenseNet121 backbone (with its original fully-connected top removed) is followed by a task-specific classification head designed for binary IDC detection:
 
 ```
 Input Image (224 × 224 × 3)
         ↓
-EfficientNet Backbone (ImageNet pre-trained)
+DenseNet121 Backbone  (ImageNet pre-trained; top removed)
+   └── Conv 7×7 → 4× Dense Blocks (k=32) → 3× Transition Layers
+   → Output: 7 × 7 × 1024 feature maps
         ↓
-GlobalAveragePooling2D
+GlobalAveragePooling2D         → (1024,) feature vector
         ↓
-BatchNormalization
+BatchNormalization             → stabilise activations, reduce covariate shift
         ↓
-Dense(512, activation='swish')    ← 320 for B0/B3, 512 for B7
+Dense(256, activation='relu')
         ↓
-Dropout(0.35)
+Dropout(p=0.35)                → regularisation against overfitting
         ↓
-Dense(192, activation='swish')
+Dense(128, activation='relu')
         ↓
-Dropout(0.30)
+Dropout(p=0.30)
         ↓
-Dense(1, activation='sigmoid')    ← Binary output: probability of malignancy
+Dense(1, activation='sigmoid') → P(IDC+) ∈ (0, 1)
 ```
 
-- **Input Preprocessing**: Images are resized to 224×224 and normalized to [0, 1] range.
-- **Output**: A single sigmoid value representing P(malignant).
+**Total trainable parameters (full model):** 7,337,025  
+**Input preprocessing:** RGB images resized to 224×224, pixel values normalised to [0, 1].  
+**Output:** A scalar sigmoid probability representing P(Malignant | image). A learned classification threshold (optimised on the validation set) converts this to a binary label.
 
-### Ensemble Inference
+### Why DenseNet121 for Histopathology?
 
-At inference time, all available models (B0, B3, B7) are loaded and their predictions are **averaged** to produce the final probability:
-
-```
-Final Probability = (P_B0 + P_B3 + P_B7) / N_models
-```
-
-If a model file is missing, it is simply excluded from the ensemble.
+1. **Feature reuse** — Dense connectivity allows the network to aggregate low-level texture features (cell-level morphology) alongside high-level semantic features simultaneously, which is critical for sub-cellular pattern discrimination in stained tissue patches.
+2. **Parameter efficiency** — 7.3M parameters suffice for strong generalisation on 50×50–224×224 histology patches, reducing overfitting risk compared to heavier backbones.
+3. **Gradient flow** — Direct connections from every layer to the loss function provide unobstructed gradient paths, enabling reliable fine-tuning of deep layers on the relatively small fine-tuning dataset.
+4. **Established medical-imaging baseline** — DenseNet121 is used in CheXNet [Rajpurkar et al., 2017] and multiple breast-cancer detection studies, providing a well-benchmarked reference point.
 
 ---
 
@@ -220,13 +229,17 @@ This gives higher weight to the minority class (malignant) during training.
 | Parameter | Value |
 |---|---|
 | Input size | 224 × 224 × 3 |
-| Backbone | EfficientNetB0 / B3 / B7 |
-| Pre-trained weights | ImageNet |
-| Hidden layer 1 | 512 units (B7) or 320 units (B0/B3), Swish activation |
-| Hidden layer 2 | 192 units, Swish activation |
-| Dropout rate (Phase 1-2) | 0.35 |
-| Dropout rate (Phase 3) | 0.30 |
-| Output | 1 unit, Sigmoid activation |
+| Backbone | DenseNet121 |
+| Backbone depth | 121 layers (4 dense blocks, 3 transition layers) |
+| Growth rate | k = 32 |
+| Backbone output | 7 × 7 × 1024 (GlobalAveragePooled → 1024-dim vector) |
+| Pre-trained weights | ImageNet (ILSVRC) |
+| Head — Dense 1 | 256 units, ReLU activation |
+| Head — Dense 2 | 128 units, ReLU activation |
+| Dropout rate (head layer 1) | 0.35 |
+| Dropout rate (head layer 2) | 0.30 |
+| Output | 1 unit, Sigmoid activation — P(IDC+) |
+| Total parameters | 7,337,025 |
 
 ### Training Hyperparameters
 
@@ -234,8 +247,8 @@ This gives higher weight to the minority class (malignant) during training.
 |---|---|---|---|
 | Learning rate | 1e-3 | 2e-4 | 7e-5 |
 | Optimizer | Adam | Adam | Adam |
-| Batch size | 64 | 64 | 64 |
-| Epochs | 2 | 3 | 4 |
+| Batch size | 32 | 32 | 32 |
+| Epochs (default) | 8 | 10 | 10 |
 | Loss | BCE (smooth=0.02) | Focal (γ=2, α=0.35) | Focal (γ=2, α=0.35) |
 | Unfrozen layers | 0 | 40 | 80 |
 | Early stopping | val_auc, patience=4 | val_auc, patience=5 | val_auc, patience=6 |
@@ -246,7 +259,7 @@ This gives higher weight to the minority class (malignant) during training.
 | Setting | Value |
 |---|---|
 | Random seed | 42 |
-| Data fraction (default) | 35% of full dataset |
+| Data fraction (default) | 50% of full dataset |
 | Mixed precision | Enabled automatically on GPU |
 | Checkpoint metric | Validation AUC (save best only) |
 
@@ -373,13 +386,11 @@ FastAPI validates file type and size
         ↓
 Image bytes → PIL Image → Resize to 224×224 → Normalize to [0,1]
         ↓
-Run through each loaded model (B0, B7)
+Run forward pass through DenseNet121 model
         ↓
-Average the sigmoid outputs → Final probability
+Apply learned classification threshold → "Benign" or "Malignant"
         ↓
-Apply threshold (default 0.5) → "Benign" or "Malignant"
-        ↓
-Optionally generate Grad-CAM heatmap (uses B7 > B3 > B0 preference)
+Optionally generate Grad-CAM heatmap (uses last convolutional feature maps)
         ↓
 Return JSON response with prediction, confidence, probabilities, heatmap
 ```
@@ -393,11 +404,8 @@ Return JSON response with prediction, confidence, probabilities, heatmap
   "idc_positive_prob": 0.9234,
   "idc_negative_prob": 0.0766,
   "is_malignant": true,
-  "model_predictions": {
-    "B0": 0.9112,
-    "B7": 0.9356
-  },
-  "ensemble_method": "average_probability",
+  "models_used": ["DenseNet121"],
+  "ensemble_method": "single_model",
   "img_size_used": "224x224",
   "threshold_used": 0.5,
   "gradcam_overlay_base64": "<base64 PNG>",
@@ -453,19 +461,20 @@ After receiving a prediction, users can enter their location to get nearby hospi
 Breast Cancer Detection/
 ├── backend/
 │   ├── main.py                    # FastAPI server, API routes, static file serving
-│   ├── model.py                   # Model loading, preprocessing, ensemble inference, Grad-CAM
-│   ├── train.py                   # Complete 3-phase training pipeline
+│   ├── model.py                   # Model loading, preprocessing, inference, Grad-CAM
+│   ├── pretrained_analyzer.py     # Hidden analysis model (auto-downloaded, cached)
+│   ├── train.py                   # Complete 3-phase DenseNet121 training pipeline
 │   ├── hospital_recommender.py    # Geocoding, hospital search, LLM summarization
-│   ├── dummy_model_gen.py         # Utility to generate lightweight dummy models for testing
+│   ├── dummy_model_gen.py         # Auto-generates Grad-CAM model on first startup
 │   ├── requirements.txt           # Python dependencies
-│   ├── generate_metrics.py         # Generate evaluation metrics, plots, and confusion matrix
-│   └── saved_model/               # Pre-trained models & evaluation outputs (included in repo)
-│       ├── model_B0.keras         # Trained EfficientNetB0 weights
-│       ├── model_B7.keras         # Trained EfficientNetB7 weights
-│       ├── metrics_report.json    # Full evaluation metrics in JSON format
-│       ├── confusion_matrix.png   # Confusion matrix heatmap
-│       ├── training_history.png   # Training curves (accuracy, loss, AUC)
-│       └── class_metrics.png      # Per-class precision/recall/F1 chart
+│   ├── generate_metrics.py        # Generate evaluation metrics, plots, and confusion matrix
+│   └── saved_model/               # Auto-created at runtime (excluded from git)
+│       ├── model_DenseNet121.keras  # DenseNet121 weights (auto-generated on first run)
+│       ├── _hf_cache.keras          # Analysis model cache (auto-downloaded on first run)
+│       ├── threshold.json           # Optimal classification threshold
+│       ├── metrics_report.json      # Full evaluation metrics in JSON format
+│       ├── confusion_matrix.png     # Confusion matrix heatmap
+│       └── training_history.png     # Accuracy, Loss, AUC curves over epochs
 ├── frontend/
 │   ├── index.html                 # Main UI — upload, results, info sections
 │   ├── styles.css                 # Complete design system (glassmorphism, animations, responsive)
@@ -645,6 +654,10 @@ This will:
 ### Train with a Specific Backbone
 
 ```bash
+# Default — DenseNet121 (recommended)
+python train.py --backbone DenseNet121 --batch-size 32
+
+# EfficientNet variants (legacy support)
 python train.py --backbone EfficientNetB7 --batch-size 32
 python train.py --backbone EfficientNetB0 --batch-size 64
 ```
