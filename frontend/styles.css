@@ -743,6 +743,138 @@ a { text-decoration: none; color: inherit; }
 .about-card-title { font-size: 1rem; font-weight: 700; margin-bottom: 12px; }
 .about-card p { font-size: 0.875rem; color: var(--text-muted); line-height: 1.7; }
 
+/* ── Model Performance Metrics ──────────────────────────────── */
+.metrics-intro {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  margin: -32px auto 36px;
+  max-width: 500px;
+}
+.metrics-cards-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  margin-bottom: 32px;
+}
+.metric-card {
+  text-align: center;
+  padding: 28px 16px;
+  transition: var(--transition);
+}
+.metric-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-hover); }
+.metric-value {
+  font-size: 2.2rem;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.metric-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Confusion Matrix */
+.confusion-matrix-wrap {
+  padding: 32px;
+  max-width: 560px;
+  margin: 0 auto;
+}
+.confusion-matrix-wrap .section-subtitle {
+  text-align: center;
+  margin-bottom: 24px;
+}
+.cm-layout {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.cm-y-label {
+  writing-mode: vertical-lr;
+  transform: rotate(180deg);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.cm-inner { flex: 1; }
+.cm-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.cm-cell {
+  padding: 20px 16px;
+  border-radius: var(--radius-sm);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cm-cell-value {
+  font-size: 1.8rem;
+  font-weight: 800;
+  font-family: var(--font-mono);
+}
+.cm-cell-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.cm-cell-sub {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+.cm-tn {
+  background: rgba(5, 150, 105, 0.08);
+  border: 1px solid rgba(5, 150, 105, 0.2);
+}
+.cm-tn .cm-cell-value { color: var(--benign); }
+.cm-tn .cm-cell-label { color: var(--benign); }
+
+.cm-tp {
+  background: rgba(5, 150, 105, 0.08);
+  border: 1px solid rgba(5, 150, 105, 0.2);
+}
+.cm-tp .cm-cell-value { color: var(--benign); }
+.cm-tp .cm-cell-label { color: var(--benign); }
+
+.cm-fp {
+  background: rgba(220, 38, 38, 0.06);
+  border: 1px solid rgba(220, 38, 38, 0.15);
+}
+.cm-fp .cm-cell-value { color: var(--malignant); }
+.cm-fp .cm-cell-label { color: var(--malignant); }
+
+.cm-fn {
+  background: rgba(220, 38, 38, 0.06);
+  border: 1px solid rgba(220, 38, 38, 0.15);
+}
+.cm-fn .cm-cell-value { color: var(--malignant); }
+.cm-fn .cm-cell-label { color: var(--malignant); }
+
+.cm-x-label {
+  text-align: center;
+  margin-top: 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+@media (max-width: 640px) {
+  .metrics-cards-row { grid-template-columns: repeat(2, 1fr); }
+  .confusion-matrix-wrap { padding: 20px; }
+  .cm-cell { padding: 14px 10px; }
+  .cm-cell-value { font-size: 1.3rem; }
+}
+
 /* ── Footer ────────────────────────────────────────────────── */
 .footer {
   position: relative;

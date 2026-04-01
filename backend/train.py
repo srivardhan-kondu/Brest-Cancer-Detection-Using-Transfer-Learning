@@ -21,7 +21,7 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import train_test_split
 from tensorflow.keras import callbacks, layers, models, optimizers
-from tensorflow.keras.applications import EfficientNetB0, EfficientNetB3, EfficientNetB7
+from tensorflow.keras.applications import EfficientNetB0, EfficientNetB3, EfficientNetB7, DenseNet121
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -201,11 +201,13 @@ def _get_backbone(backbone_name: str):
         return EfficientNetB3, "EfficientNetB3"
     if normalized == "efficientnetb7":
         return EfficientNetB7, "EfficientNetB7"
-    raise ValueError(f"Unsupported backbone '{backbone_name}'. Use EfficientNetB0, EfficientNetB3, or EfficientNetB7.")
+    if normalized == "densenet121":
+        return DenseNet121, "DenseNet121"
+    raise ValueError(f"Unsupported backbone '{backbone_name}'. Use EfficientNetB0, EfficientNetB3, EfficientNetB7, or DenseNet121.")
 
 
-def build_model(backbone_name="EfficientNetB0", unfreeze_top_n=0, dropout_rate=0.35):
-    """Build EfficientNet transfer-learning model (B0/B3/B7)."""
+def build_model(backbone_name="DenseNet121", unfreeze_top_n=0, dropout_rate=0.35):
+    """Build transfer-learning model (EfficientNet B0/B3/B7 or DenseNet121)."""
     backbone_cls, backbone_label = _get_backbone(backbone_name)
     base = backbone_cls(
         include_top=False,
@@ -224,10 +226,15 @@ def build_model(backbone_name="EfficientNetB0", unfreeze_top_n=0, dropout_rate=0
     x = base(inputs, training=unfreeze_top_n > 0)
     x = layers.GlobalAveragePooling2D()(x)
     x = layers.BatchNormalization()(x)
-    hidden_dim = 512 if backbone_label == "EfficientNetB7" else 320
-    x = layers.Dense(hidden_dim, activation="swish")(x)
+    if backbone_label == "EfficientNetB7":
+        hidden_dim = 512
+    elif backbone_label == "DenseNet121":
+        hidden_dim = 256
+    else:
+        hidden_dim = 320
+    x = layers.Dense(hidden_dim, activation="relu")(x)
     x = layers.Dropout(dropout_rate)(x)
-    x = layers.Dense(192, activation="swish")(x)
+    x = layers.Dense(128, activation="relu")(x)
     x = layers.Dropout(0.3)(x)
     outputs = layers.Dense(1, activation="sigmoid", dtype="float32")(x)
     return models.Model(inputs, outputs, name=f"BreastCancerDetector_{backbone_label}")
@@ -424,6 +431,20 @@ def train(args):
     best_threshold = evaluate_best_threshold(model, val_ds)
     summary = evaluate_test_set(model, test_ds, threshold=best_threshold)
 
+    # Save a copy with the backbone-specific name for model.py to find
+    backbone_short = args.backbone.replace("EfficientNet", "")
+    if args.backbone.lower() == "densenet121":
+        backbone_short = "DenseNet121"
+    named_path = str(SAVE_DIR / f"model_{backbone_short}.keras")
+    model.save(named_path)
+    logger.info("Saved named model to: %s", named_path)
+
+    # Also save the optimal threshold
+    summary["optimal_threshold"] = best_threshold
+    threshold_path = SAVE_DIR / "threshold.json"
+    threshold_path.write_text(json.dumps({"threshold": best_threshold}, indent=2), encoding="utf-8")
+    logger.info("Saved optimal threshold (%.4f) to: %s", best_threshold, threshold_path)
+
     logger.info("Best-threshold test F1: %.4f", summary["f1"])
     logger.info("Best-threshold test accuracy: %.4f", summary["accuracy"])
     logger.info("Model saved to: %s", MODEL_PATH)
@@ -432,12 +453,12 @@ def train(args):
 def parse_args():
     parser = argparse.ArgumentParser(description="Train EfficientNetB7 for breast cancer detection")
     parser.add_argument("--dataset", type=str, default="", help="Path to extracted IDC dataset root")
-    parser.add_argument("--backbone", type=str, default="EfficientNetB0", choices=["EfficientNetB0", "EfficientNetB3", "EfficientNetB7"])
-    parser.add_argument("--data-fraction", type=float, default=0.35, help="Fraction of dataset to use (0.1 to 1.0)")
-    parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--epochs-head", type=int, default=2)
-    parser.add_argument("--epochs-finetune-1", type=int, default=3)
-    parser.add_argument("--epochs-finetune-2", type=int, default=4)
+    parser.add_argument("--backbone", type=str, default="DenseNet121", choices=["EfficientNetB0", "EfficientNetB3", "EfficientNetB7", "DenseNet121"])
+    parser.add_argument("--data-fraction", type=float, default=0.5, help="Fraction of dataset to use (0.1 to 1.0)")
+    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--epochs-head", type=int, default=8)
+    parser.add_argument("--epochs-finetune-1", type=int, default=10)
+    parser.add_argument("--epochs-finetune-2", type=int, default=10)
     parser.add_argument("--unfreeze-phase2", type=int, default=40)
     parser.add_argument("--unfreeze-phase3", type=int, default=80)
     parser.add_argument("--enable-mixup", action="store_true", help="Enable mixup regularization (slower)")

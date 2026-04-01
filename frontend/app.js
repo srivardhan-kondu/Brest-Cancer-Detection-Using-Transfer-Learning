@@ -216,7 +216,7 @@ function displayResults(data) {
   animateBar(document.getElementById('prob-malignant-bar'), posProb, 550);
 
   // Metadata
-  document.getElementById('meta-model').textContent    = data.model_info || 'EfficientNetB7';
+  document.getElementById('meta-model').textContent    = data.models_used?.join(', ') || 'DenseNet121';
   document.getElementById('meta-filename').textContent = data.filename || 'unknown';
   document.getElementById('meta-imgsize').textContent  = data.img_size_used || '224×224';
 

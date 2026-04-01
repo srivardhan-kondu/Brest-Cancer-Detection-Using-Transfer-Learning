@@ -1,33 +1,53 @@
+"""
+Generate a small DenseNet121-based model for pipeline testing.
+NOTE: This model has RANDOM weights and will NOT give meaningful predictions.
+Run train.py to get a real trained model.
+"""
 import os
+import json
 import tensorflow as tf
+from tensorflow.keras.applications import DenseNet121
 
-def create_dummy_model(name="EfficientNetB0"):
-    # Input shape: (None, 224, 224, 3)
+
+def create_dummy_densenet_model():
+    """Create a small DenseNet121 transfer-learning model (untrained)."""
+    base = DenseNet121(
+        include_top=False,
+        weights="imagenet",
+        input_shape=(224, 224, 3),
+    )
+    base.trainable = False
+
     inputs = tf.keras.Input(shape=(224, 224, 3))
-    
-    # A couple of Conv2D layers so Grad-CAM has something to use
-    x = tf.keras.layers.Conv2D(32, (3, 3), activation='relu', padding='same', name='conv2d_1')(inputs)
-    x = tf.keras.layers.MaxPooling2D((2, 2))(x)
-    x = tf.keras.layers.Conv2D(64, (3, 3), activation='relu', padding='same', name='conv2d_2')(x)
-    
-    # Flatten and dense for classification
+    x = base(inputs, training=False)
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
-    x = tf.keras.layers.Dense(64, activation='relu')(x)
-    outputs = tf.keras.layers.Dense(1, activation='sigmoid', dtype='float32')(x)
-    
-    model = tf.keras.Model(inputs=inputs, outputs=outputs, name=name)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Dense(256, activation="relu")(x)
+    x = tf.keras.layers.Dropout(0.35)(x)
+    x = tf.keras.layers.Dense(128, activation="relu")(x)
+    x = tf.keras.layers.Dropout(0.3)(x)
+    outputs = tf.keras.layers.Dense(1, activation="sigmoid", dtype="float32")(x)
+
+    model = tf.keras.Model(inputs=inputs, outputs=outputs, name="BreastCancerDetector_DenseNet121")
     return model
 
-if __name__ == "__main__":
-    saved_model_dir = "/Users/srivardhan/PULSE PROJECTS/March/Breast Cancer Detection/backend/saved_model"
-    os.makedirs(saved_model_dir, exist_ok=True)
-    
-    # Create B0
-    model_b0 = create_dummy_model("EfficientNetB0")
-    model_b0.save(os.path.join(saved_model_dir, "model_B0.keras"))
-    print("Saved dummy model_B0.keras")
 
-    # Create B7 (for Grad-CAM)
-    model_b7 = create_dummy_model("EfficientNetB7")
-    model_b7.save(os.path.join(saved_model_dir, "model_B7.keras"))
-    print("Saved dummy model_B7.keras")
+if __name__ == "__main__":
+    saved_model_dir = os.path.join(os.path.dirname(__file__), "saved_model")
+    os.makedirs(saved_model_dir, exist_ok=True)
+
+    print("Creating DenseNet121-based model (ImageNet weights, untrained classifier head)...")
+    model = create_dummy_densenet_model()
+    model_path = os.path.join(saved_model_dir, "model_DenseNet121.keras")
+    model.save(model_path)
+    print(f"Saved to {model_path} ({os.path.getsize(model_path) / 1024 / 1024:.1f} MB)")
+    print(f"Total params: {model.count_params():,}")
+
+    # Save default threshold
+    threshold_path = os.path.join(saved_model_dir, "threshold.json")
+    with open(threshold_path, "w") as f:
+        json.dump({"threshold": 0.5}, f, indent=2)
+    print(f"Saved default threshold to {threshold_path}")
+
+    print("\n⚠️  WARNING: This model has an untrained classifier head.")
+    print("   Predictions will be unreliable. Run train.py for a proper model.")

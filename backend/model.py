@@ -1,10 +1,11 @@
 """
 model.py - Model loading and inference for Breast Cancer Detection
-Uses EfficientNetB7 fine-tuned on IDC dataset
+Supports DenseNet121, EfficientNetB0/B3/B7 fine-tuned on IDC dataset
 """
 
 import os
 import io
+import json
 import logging
 import base64
 import numpy as np
@@ -13,51 +14,77 @@ import tensorflow as tf
 
 logger = logging.getLogger(__name__)
 
-# Image size for EfficientNetB7
 IMG_SIZE = (224, 224)
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "saved_model", "breast_cancer_model.keras")
+MODEL_DIR = os.path.join(os.path.dirname(__file__), "saved_model")
+THRESHOLD_PATH = os.path.join(MODEL_DIR, "threshold.json")
 DEFAULT_THRESHOLD = float(os.getenv("PREDICTION_THRESHOLD", "0.5"))
 
 _models = {}
+_optimal_threshold = None
 
 
-def _model_label(model: tf.keras.Model) -> str:
-    name = (model.name or "").lower()
-    if "efficientnetb0" in name:
-        return "EfficientNetB0"
-    if "efficientnetb3" in name:
-        return "EfficientNetB3"
-    if "efficientnetb7" in name:
-        return "EfficientNetB7"
-    return model.name or "TransferLearningModel"
+def _load_optimal_threshold() -> float:
+    """Load the optimal threshold saved during training."""
+    global _optimal_threshold
+    if _optimal_threshold is not None:
+        return _optimal_threshold
+    if os.path.exists(THRESHOLD_PATH):
+        try:
+            with open(THRESHOLD_PATH, "r") as f:
+                data = json.load(f)
+            _optimal_threshold = float(data.get("threshold", DEFAULT_THRESHOLD))
+            logger.info("Loaded optimal threshold: %.4f", _optimal_threshold)
+            return _optimal_threshold
+        except Exception as e:
+            logger.warning("Could not load threshold file: %s", e)
+    _optimal_threshold = DEFAULT_THRESHOLD
+    return _optimal_threshold
 
 
 def load_model():
     """
-    Load all trained models (B0, B3, B7) into memory.
+    Load all trained models found in saved_model/ directory.
+    Supports DenseNet121, EfficientNetB0, B3, B7.
     """
     global _models
 
     if _models:
         return _models
 
-    model_dir = os.path.join(os.path.dirname(__file__), "saved_model")
-
-    model_paths = {
-        "B0": os.path.join(model_dir, "model_B0.keras"),
-        "B3": os.path.join(model_dir, "model_B3.keras"),
-        "B7": os.path.join(model_dir, "model_B7.keras"),
+    # Check all possible model files
+    model_candidates = {
+        "DenseNet121": os.path.join(MODEL_DIR, "model_DenseNet121.keras"),
+        "B0": os.path.join(MODEL_DIR, "model_B0.keras"),
+        "B3": os.path.join(MODEL_DIR, "model_B3.keras"),
+        "B7": os.path.join(MODEL_DIR, "model_B7.keras"),
     }
 
-    for name, path in model_paths.items():
+    # Also check the generic training output path
+    generic_path = os.path.join(MODEL_DIR, "breast_cancer_model.keras")
+
+    for name, path in model_candidates.items():
         if os.path.exists(path):
-            logger.info(f"Loading model {name} from {path}")
-            _models[name] = tf.keras.models.load_model(path, compile=False)
-        else:
-            logger.warning(f"Model {name} not found at {path}")
+            try:
+                logger.info("Loading model %s from %s", name, path)
+                _models[name] = tf.keras.models.load_model(path, compile=False)
+                logger.info("Successfully loaded model %s (%d params)", name, _models[name].count_params())
+            except Exception as e:
+                logger.warning("Failed to load model %s: %s", name, e)
+
+    # Fallback: load the generic model if no named models found
+    if not _models and os.path.exists(generic_path):
+        try:
+            logger.info("Loading generic model from %s", generic_path)
+            _models["main"] = tf.keras.models.load_model(generic_path, compile=False)
+            logger.info("Successfully loaded generic model (%d params)", _models["main"].count_params())
+        except Exception as e:
+            logger.warning("Failed to load generic model: %s", e)
 
     if not _models:
-        logger.error("No trained models found. Train models first.")
+        logger.error("No trained models found in %s. Run train.py first.", MODEL_DIR)
+
+    # Load the optimal threshold
+    _load_optimal_threshold()
 
     return _models
 
@@ -180,25 +207,43 @@ def _make_gradcam_images(
     }
 
 
-def predict(image_bytes: bytes, include_heatmap: bool = False, threshold: float = DEFAULT_THRESHOLD) -> dict:
+def predict(image_bytes: bytes, include_heatmap: bool = False, threshold: float | None = None) -> dict:
     """
-    Run ensemble prediction using EfficientNetB0, B3, and B7.
+    Run prediction using all available models (ensemble if multiple).
+    Uses optimal threshold from training if available.
     """
     models = load_model()
 
     if not models:
         return {
-            "error": "No trained models loaded.",
+            "error": "No trained models loaded. Please run train.py first.",
             "prediction": None,
             "confidence": None,
         }
+
+    # Use optimal threshold from training, fall back to default
+    if threshold is None:
+        threshold = _load_optimal_threshold()
 
     input_tensor = preprocess_image(image_bytes)
 
     probs = {}
     for name, model in models.items():
         pred = model.predict(input_tensor, verbose=0)
-        probs[name] = float(pred[0][0])
+        prob = float(pred[0][0])
+        probs[name] = prob
+        logger.info("Model %s raw output: %.4f", name, prob)
+
+    # Average probability from all models
+    avg_prob = sum(probs.values()) / len(probs)
+    logger.info("Ensemble avg probability (malignant): %.4f, threshold: %.4f", avg_prob, threshold)
+
+    idc_positive_prob = avg_prob
+    idc_negative_prob = 1 - avg_prob
+
+    is_malignant = avg_prob >= threshold
+    label = "Malignant" if is_malignant else "Benign"
+    confidence = idc_positive_prob if is_malignant else idc_negative_prob
 
     # Average probability from all models
     avg_prob = sum(probs.values()) / len(probs)
@@ -210,10 +255,10 @@ def predict(image_bytes: bytes, include_heatmap: bool = False, threshold: float 
     label = "Malignant" if is_malignant else "Benign"
     confidence = idc_positive_prob if is_malignant else idc_negative_prob
 
-    # Grad-CAM: prefer B7, then B3, then B0
+    # Grad-CAM: prefer DenseNet121, then B7, then B3, then B0
     gradcam_result = None
     if include_heatmap:
-        for variant in ("B7", "B3", "B0"):
+        for variant in ("DenseNet121", "B7", "B3", "B0", "main"):
             if variant in models:
                 gradcam_result = _make_gradcam_images(models[variant], input_tensor)
                 if gradcam_result is not None:
@@ -226,9 +271,10 @@ def predict(image_bytes: bytes, include_heatmap: bool = False, threshold: float 
         "idc_negative_prob": round(idc_negative_prob, 4),
         "is_malignant": is_malignant,
         "model_predictions": probs,
-        "ensemble_method": "average_probability",
+        "ensemble_method": "average_probability" if len(probs) > 1 else "single_model",
+        "models_used": list(probs.keys()),
         "img_size_used": f"{IMG_SIZE[0]}x{IMG_SIZE[1]}",
-        "threshold_used": round(float(threshold), 3),
+        "threshold_used": round(float(threshold), 4),
     }
 
     if gradcam_result is not None:
@@ -257,6 +303,7 @@ def get_model_info() -> dict:
         "status": "loaded",
         "models_loaded": list(models.keys()),
         "model_details": info,
+        "optimal_threshold": _load_optimal_threshold(),
         "dataset": "IDC Histopathology (Kaggle)",
-        "classes": ["Benign", "Malignant"]
+        "classes": ["Benign (IDC-)", "Malignant (IDC+)"],
     }

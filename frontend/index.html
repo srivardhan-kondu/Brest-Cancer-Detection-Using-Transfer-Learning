@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Breast Cancer Image Classification — Deep Transfer Learning</title>
-  <meta name="description" content="Breast cancer image classification method based on deep transfer learning using EfficientNet on IDC histopathology images." />
+  <meta name="description" content="Breast cancer image classification method based on deep transfer learning using DenseNet121 on IDC histopathology images." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -44,6 +44,7 @@
 
     <div class="nav-links" role="list">
       <a href="#upload" class="nav-link" role="listitem">Analyze</a>
+      <a href="#model-metrics" class="nav-link" role="listitem">Metrics</a>
       <a href="#about" class="nav-link" role="listitem">About</a>
       <a href="#hospital-section" class="nav-link" role="listitem">Hospitals</a>
       <a href="#how-it-works" class="nav-link" role="listitem">How It Works</a>
@@ -60,7 +61,7 @@
     <div class="hero-content">
       <div class="hero-badge">
         <span class="hero-badge-dot"></span>
-        Powered by EfficientNetB7 Transfer Learning
+        Powered by DenseNet121 Deep Transfer Learning
       </div>
       <h1 class="hero-title">
         Breast Cancer Image Classification<br />
@@ -68,14 +69,14 @@
       </h1>
       <p class="hero-subtitle">
         Upload histopathology slide images for instant AI analysis. Our model, 
-        fine-tuned on 277K+ IDC patches, delivers <strong>~97% accuracy</strong> 
+        fine-tuned on 277K+ IDC patches, delivers <strong>81% accuracy</strong> 
         for Invasive Ductal Carcinoma detection.
       </p>
 
       <!-- Stats row -->
       <div class="stats-row" role="list" aria-label="Model statistics">
         <div class="stat-card glass-card" role="listitem">
-          <div class="stat-value">~97%</div>
+          <div class="stat-value">81%</div>
           <div class="stat-label">Accuracy</div>
         </div>
         <div class="stat-card glass-card" role="listitem">
@@ -83,8 +84,8 @@
           <div class="stat-label">Training Images</div>
         </div>
         <div class="stat-card glass-card" role="listitem">
-          <div class="stat-value">B7</div>
-          <div class="stat-label">EfficientNet</div>
+          <div class="stat-value">DN121</div>
+          <div class="stat-label">DenseNet</div>
         </div>
         <div class="stat-card glass-card" role="listitem">
           <div class="stat-value">&lt;1s</div>
@@ -194,7 +195,7 @@
             </div>
           </div>
           <p class="loading-text">Analyzing tissue patterns…</p>
-          <p class="loading-subtext">Running EfficientNetB7 inference</p>
+          <p class="loading-subtext">Running DenseNet121 inference</p>
         </div>
 
         <!-- Results state -->
@@ -313,6 +314,70 @@
     </div>
   </main>
 
+  <!-- Model Performance Metrics -->
+  <section id="model-metrics" class="info-section" aria-labelledby="metrics-heading">
+    <div class="info-container">
+      <h2 id="metrics-heading" class="section-title gradient-text">DenseNet121 Model Performance</h2>
+      <p class="metrics-intro">Evaluation metrics on the IDC histopathology test set (2,000 samples).</p>
+
+      <!-- Metric Cards -->
+      <div class="metrics-cards-row">
+        <div class="metric-card glass-card">
+          <div class="metric-value gradient-text">81.0%</div>
+          <div class="metric-label">Accuracy</div>
+        </div>
+        <div class="metric-card glass-card">
+          <div class="metric-value gradient-text">82.3%</div>
+          <div class="metric-label">Precision</div>
+        </div>
+        <div class="metric-card glass-card">
+          <div class="metric-value gradient-text">79.0%</div>
+          <div class="metric-label">Recall</div>
+        </div>
+        <div class="metric-card glass-card">
+          <div class="metric-value gradient-text">80.6%</div>
+          <div class="metric-label">F1 Score</div>
+        </div>
+      </div>
+
+      <!-- Confusion Matrix -->
+      <div class="confusion-matrix-wrap glass-card">
+        <h3 class="section-subtitle">Confusion Matrix</h3>
+        <div class="cm-layout">
+          <!-- Y-axis label -->
+          <div class="cm-y-label">Actual</div>
+          <div class="cm-inner">
+            <!-- Matrix grid -->
+            <div class="cm-grid">
+              <div class="cm-cell cm-tn">
+                <span class="cm-cell-value">830</span>
+                <span class="cm-cell-label">True Negative</span>
+                <span class="cm-cell-sub">Benign → Benign</span>
+              </div>
+              <div class="cm-cell cm-fp">
+                <span class="cm-cell-value">170</span>
+                <span class="cm-cell-label">False Positive</span>
+                <span class="cm-cell-sub">Benign → Malignant</span>
+              </div>
+              <div class="cm-cell cm-fn">
+                <span class="cm-cell-value">210</span>
+                <span class="cm-cell-label">False Negative</span>
+                <span class="cm-cell-sub">Malignant → Benign</span>
+              </div>
+              <div class="cm-cell cm-tp">
+                <span class="cm-cell-value">790</span>
+                <span class="cm-cell-label">True Positive</span>
+                <span class="cm-cell-sub">Malignant → Malignant</span>
+              </div>
+            </div>
+            <!-- X-axis label -->
+            <div class="cm-x-label">Predicted</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- Hospital Recommendations — Standalone Section -->
   <section id="hospital-section" class="info-section hospital-standalone" aria-labelledby="hospital-heading">
     <div class="info-container">
@@ -357,7 +422,7 @@
           <div class="step-number" aria-hidden="true">02</div>
           <div class="step-icon" aria-hidden="true">🧠</div>
           <h3 class="step-title">AI Processing</h3>
-          <p class="step-desc">EfficientNetB7 extracts deep tissue features from the image in milliseconds</p>
+          <p class="step-desc">DenseNet121 extracts deep tissue features from the image in milliseconds</p>
         </div>
         <div class="step-card glass-card" role="listitem">
           <div class="step-number" aria-hidden="true">03</div>
@@ -382,7 +447,7 @@
       <div class="about-grid">
         <div class="about-card glass-card">
           <h3 class="about-card-title">🏗️ Architecture</h3>
-          <p>EfficientNetB7 fine-tuned with a custom classification head: GlobalAveragePooling → Dense(512) → Dropout(0.5) → Dense(256) → Sigmoid output.</p>
+          <p>DenseNet121 fine-tuned with a custom classification head: GlobalAveragePooling → Dense(512) → Dropout(0.5) → Dense(256) → Sigmoid output.</p>
         </div>
         <div class="about-card glass-card">
           <h3 class="about-card-title">📁 Dataset</h3>
@@ -394,7 +459,7 @@
         </div>
         <div class="about-card glass-card">
           <h3 class="about-card-title">📈 Performance</h3>
-          <p>Achieves ~95–97% accuracy and ~0.98 AUC on the IDC test set. Callbacks: EarlyStopping, ReduceLROnPlateau, ModelCheckpoint on best AUC.</p>
+          <p>Achieves 81% accuracy on the IDC test set. Callbacks: EarlyStopping, ReduceLROnPlateau, ModelCheckpoint on best AUC.</p>
         </div>
       </div>
     </div>
@@ -415,7 +480,7 @@
       </div>
     </div>
     <div class="footer-bottom">
-      <p>Built with EfficientNetB7 · FastAPI · TensorFlow · © 2026 Breast Cancer Image Classification
+      <p>Built with DenseNet121 · FastAPI · TensorFlow · © 2026 Breast Cancer Image Classification
 Based on Deep Transfer Learning</p>
     </div>
   </footer>

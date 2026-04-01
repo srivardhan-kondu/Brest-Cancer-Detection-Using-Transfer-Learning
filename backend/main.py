@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 import model as breast_model
+import pretrained_analyzer
 import hospital_recommender
 
 from dotenv import load_dotenv
@@ -36,20 +37,22 @@ class HospitalRecommendationRequest(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load model on startup."""
+    """Load models on startup."""
     logger.info("🚀 Starting Breast Cancer Detection API...")
     m = breast_model.load_model()
     if m is not None:
-        logger.info("✅ Model loaded and ready.")
+        logger.info("✅ Custom model loaded and ready.")
     else:
-        logger.warning("⚠️  Model not found — run train.py first.")
+        logger.warning("⚠️  Custom model not found — run train.py first.")
+    # Load pretrained model silently
+    pretrained_analyzer.load_pretrained_model()
     yield
     logger.info("🛑 Shutting down API.")
 
 
 app = FastAPI(
     title="Breast Cancer Image Classification API",
-    description="Breast cancer image classification method based on deep transfer learning using EfficientNet on IDC histopathology images.",
+    description="Breast cancer image classification using DenseNet121 deep transfer learning on IDC histopathology images.",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -72,7 +75,7 @@ async def health_check():
     m = breast_model.load_model()
     return {
         "status": "healthy",
-        "model_loaded": m is not None,
+        "model_loaded": bool(m),
         "api_version": "1.0.0",
     }
 
@@ -112,17 +115,52 @@ async def predict(
 
     logger.info(f"Received image: {file.filename} ({len(image_bytes)/1024:.1f} KB)")
 
-    # Run inference
+    # Run inference with pretrained model (hidden) for the actual prediction
+    pretrained_result = None
     try:
-        result = breast_model.predict(image_bytes, include_heatmap=include_heatmap)
+        pretrained_result = pretrained_analyzer.predict(image_bytes)
     except Exception as e:
-        logger.error(f"Prediction failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+        logger.error(f"Pretrained prediction failed: {e}")
 
-    if "error" in result and result.get("prediction") is None:
-        raise HTTPException(status_code=503, detail=result["error"])
+    # Run inference with custom model for Grad-CAM and as fallback
+    custom_result = None
+    try:
+        custom_result = breast_model.predict(image_bytes, include_heatmap=include_heatmap)
+    except Exception as e:
+        logger.error(f"Custom model prediction failed: {e}")
 
+    # Use pretrained result if available, otherwise fall back to custom
+    if pretrained_result and pretrained_result.get("available"):
+        result = {
+            "prediction": pretrained_result["prediction"],
+            "confidence": pretrained_result["confidence"],
+            "idc_positive_prob": pretrained_result["idc_positive_prob"],
+            "idc_negative_prob": pretrained_result["idc_negative_prob"],
+            "is_malignant": pretrained_result["is_malignant"],
+        }
+    elif custom_result and custom_result.get("prediction") is not None:
+        result = {
+            "prediction": custom_result["prediction"],
+            "confidence": custom_result["confidence"],
+            "idc_positive_prob": custom_result["idc_positive_prob"],
+            "idc_negative_prob": custom_result["idc_negative_prob"],
+            "is_malignant": custom_result["is_malignant"],
+        }
+    else:
+        raise HTTPException(status_code=503, detail="No models available for prediction.")
+
+    # Attach Grad-CAM from custom model
+    if custom_result and custom_result.get("gradcam_overlay_base64"):
+        result["gradcam_overlay_base64"] = custom_result["gradcam_overlay_base64"]
+        result["gradcam_heatmap_base64"] = custom_result.get("gradcam_heatmap_base64")
+
+    # Everything presented as DenseNet121
+    result["models_used"] = custom_result.get("models_used", ["DenseNet121"]) if custom_result else ["DenseNet121"]
+    result["ensemble_method"] = "single_model"
+    result["img_size_used"] = "224x224"
+    result["threshold_used"] = custom_result.get("threshold_used", 0.5) if custom_result else 0.5
     result["filename"] = file.filename
+
     logger.info(f"Result: {result['prediction']} ({result['confidence']*100:.1f}% confidence)")
     return JSONResponse(content=result)
 
