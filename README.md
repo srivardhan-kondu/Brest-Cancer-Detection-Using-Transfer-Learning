@@ -498,12 +498,13 @@ Breast Cancer Detection/
 - **Python 3.11+** (recommended)
 - **pip** package manager
 - **Git**
+- **Internet connection** on first run (downloads model weights automatically, ~15 MB)
 
 ### Step 1: Clone the Repository
 
 ```bash
-git clone <repository-url>
-cd "Breast Cancer Detection"
+git clone https://github.com/srivardhan-kondu/Brest-Cancer-Detection-Using-Transfer-Learning.git
+cd Brest-Cancer-Detection-Using-Transfer-Learning
 ```
 
 ### Step 2: Create a Virtual Environment
@@ -520,27 +521,22 @@ source venv/bin/activate        # macOS / Linux
 pip install -r backend/requirements.txt
 ```
 
-#### Dependencies
+> **macOS (Apple Silicon):** also run `pip install tensorflow-metal` for GPU acceleration.
 
-| Package | Version | Purpose |
-|---|---|---|
-| `fastapi` | ≥0.110.0 | Web framework for API |
-| `uvicorn` | ≥0.29.0 | ASGI server |
-| `tensorflow` | ≥2.13.0, <2.17 | Deep learning framework |
-| `tensorflow-metal` | ≥1.1.0 (macOS only) | GPU acceleration on Apple Silicon |
-| `pillow` | ≥10.0.0 | Image processing |
-| `numpy` | ≥1.24.0, <2.0 | Numerical operations |
-| `scikit-learn` | ≥1.3.0 | Metrics, train/test splitting |
-| `python-multipart` | ≥0.0.9 | File upload handling |
-| `matplotlib` | ≥3.7.0 | Plotting (training) |
-| `seaborn` | ≥0.12.0 | Confusion matrix visualization |
-| `kagglehub` | ≥0.2.0 | Dataset download |
-| `kaggle` | ≥1.6.17 | Kaggle CLI fallback |
-| `aiofiles` | ≥23.0.0 | Async file serving |
+#### Key Dependencies
+
+| Package | Purpose |
+|---|---|
+| `fastapi` + `uvicorn` | Backend web framework & ASGI server |
+| `tensorflow ≥2.13` | Deep learning inference & Grad-CAM |
+| `pillow`, `numpy` | Image processing |
+| `scikit-learn` | Metrics & thresholding |
+| `huggingface_hub` | Auto-download model weights on first run |
+| `python-multipart` | File upload handling |
 
 ### Step 4: Run the Application
 
-**Option A — Using the run script:**
+**Option A — Using the run script (recommended):**
 
 ```bash
 bash run.sh
@@ -559,9 +555,16 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 - **Application**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
 
-### That's It!
+### What Happens on First Run
 
-Pre-trained models (`model_B0.keras` and `model_B7.keras`) are already included in the repository. **No training or dataset download is needed** to use the application.
+**No model files need to be downloaded manually.** When the server starts for the first time:
+
+1. **Grad-CAM model** — A DenseNet121 model is automatically generated locally (uses pretrained ImageNet weights, takes ~30 seconds on first start only). Saved to `backend/saved_model/model_DenseNet121.keras`.
+2. **Analysis model** — The prediction engine weights (~15 MB) are automatically downloaded from HuggingFace and cached to `backend/saved_model/_hf_cache.keras`. Requires a one-time internet connection.
+
+Subsequent startups load both from local cache and are fast.
+
+> **To retrain on the full IDC dataset yourself**, see [Section 15](#15-retraining-the-model-optional).
 
 ---
 

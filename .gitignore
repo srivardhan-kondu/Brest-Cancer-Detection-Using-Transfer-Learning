@@ -19,6 +19,13 @@ venv/
 backend/logs/
 startup_log.txt
 
+# Generated / downloaded model files — auto-created on first run, no need to track
+backend/saved_model/*.keras
+backend/saved_model/metrics_report.json
+backend/saved_model/confusion_matrix.png
+backend/saved_model/training_history.png
+backend/saved_model/class_metrics.png
+
 # Jupyter
 .ipynb_checkpoints/
 .env

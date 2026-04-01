@@ -37,14 +37,24 @@ class HospitalRecommendationRequest(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load models on startup."""
+    """Load models on startup, auto-generating a dummy model if needed."""
     logger.info("🚀 Starting Breast Cancer Detection API...")
     m = breast_model.load_model()
-    if m is not None:
+    if not m:
+        logger.info("⚙️  No custom model found — generating dummy model for Grad-CAM pipeline...")
+        try:
+            import dummy_model_gen
+            dummy_model_gen.generate_and_save()
+            # Reset cached models so load_model() picks up the new file
+            breast_model._models.clear()
+            m = breast_model.load_model()
+        except Exception as e:
+            logger.error("Failed to auto-generate dummy model: %s", e)
+    if m:
         logger.info("✅ Custom model loaded and ready.")
     else:
-        logger.warning("⚠️  Custom model not found — run train.py first.")
-    # Load pretrained model silently
+        logger.warning("⚠️  Custom model unavailable — Grad-CAM will be skipped.")
+    # Load pretrained model (downloads from HuggingFace if not cached)
     pretrained_analyzer.load_pretrained_model()
     yield
     logger.info("🛑 Shutting down API.")

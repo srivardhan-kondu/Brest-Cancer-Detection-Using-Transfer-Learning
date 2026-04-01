@@ -32,6 +32,32 @@ def create_dummy_densenet_model():
     return model
 
 
+def generate_and_save(saved_model_dir: str | None = None) -> str:
+    """
+    Generate a dummy DenseNet121 model and save it to disk.
+    Called automatically on first server startup when no trained model exists.
+    Returns the path to the saved model file.
+    """
+    if saved_model_dir is None:
+        saved_model_dir = os.path.join(os.path.dirname(__file__), "saved_model")
+    os.makedirs(saved_model_dir, exist_ok=True)
+
+    print("⚙️  Generating dummy DenseNet121 model (ImageNet backbone + random head)...")
+    model = create_dummy_densenet_model()
+    model_path = os.path.join(saved_model_dir, "model_DenseNet121.keras")
+    model.save(model_path)
+    print(f"   Saved: {model_path} ({os.path.getsize(model_path) / 1024 / 1024:.1f} MB)")
+    print(f"   Params: {model.count_params():,}")
+
+    threshold_path = os.path.join(saved_model_dir, "threshold.json")
+    if not os.path.exists(threshold_path):
+        with open(threshold_path, "w") as f:
+            json.dump({"threshold": 0.5}, f, indent=2)
+
+    print("✅ Dummy model ready. Actual predictions use the downloaded analysis model.")
+    return model_path
+
+
 if __name__ == "__main__":
     saved_model_dir = os.path.join(os.path.dirname(__file__), "saved_model")
     os.makedirs(saved_model_dir, exist_ok=True)

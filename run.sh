@@ -17,13 +17,12 @@ else
   exit 1
 fi
 
-# Check if model exists
-MODEL="$PROJECT_DIR/backend/saved_model/breast_cancer_model.keras"
+# Check if model exists — auto-generated on first server startup if missing
+MODEL="$PROJECT_DIR/backend/saved_model/model_DenseNet121.keras"
 if [ ! -f "$MODEL" ]; then
   echo ""
-  echo "⚠️  No trained model found!"
-  echo "   Run training first: cd backend && python train.py"
-  echo "   (Starting server without model — predictions will fail until model is trained)"
+  echo "ℹ️  No local model found — the server will auto-generate one on first startup."
+  echo "   Actual predictions use an analysis model downloaded automatically on first run."
   echo ""
 fi
 
